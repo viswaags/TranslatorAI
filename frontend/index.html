@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0" name="viewport"/>
+<title>TranslatorAI — Offline AI Translator</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&amp;family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&amp;display=swap" rel="stylesheet"/>
+
+<link href="css/style.css" rel="stylesheet"/><link href="css/layout.css" rel="stylesheet"/><link href="css/camera.css" rel="stylesheet"/><link href="css/components.css" rel="stylesheet"/><link href="css/responsive.css" rel="stylesheet"/></head>
+<body>
+<div id="flashOverlay"></div>
+<div class="modal-overlay" id="cameraModal">
+<div class="cam-modal-inner">
+<div class="cam-topbar">
+<div class="cam-topbar-title">
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><circle cx="12" cy="12" r="3"></circle><path d="M20 7h-3l-2-3H9L7 7H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"></path></svg>
+        Camera
+        <span class="cam-res-badge" id="camResBadge">Initialising…</span>
+</div>
+<button class="cam-close-btn" onclick="closeCamera()">✕</button>
+</div>
+<div class="video-wrap">
+<video autoplay="" id="cameraVideo" muted="" playsinline=""></video>
+<div class="cam-guide">
+<div class="tl"></div><div class="tr"></div>
+<div class="bl"></div><div class="br"></div>
+</div>
+<div id="focusIndicator"></div>
+</div>
+<div class="cam-tip">
+<svg fill="none" height="14" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="14"><circle cx="12" cy="12" r="10"></circle><line x1="12" x2="12" y1="8" y2="12"></line><line x1="12" x2="12.01" y1="16" y2="16"></line></svg>
+<span id="camTipText">Align document within the guide lines. Tap to focus.</span>
+</div>
+<div class="cam-controls">
+<button class="cam-side-btn" id="switchCamBtn" onclick="switchCamera()" title="Switch camera">
+<svg fill="none" height="18" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="18"><path d="M1 4v6h6"></path><path d="M23 20v-6h-6"></path><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path></svg>
+</button>
+<button class="cam-capture-btn" id="captureBtn" onclick="capturePhoto()" title="Take photo"></button>
+<button class="cam-side-btn" id="torchBtn" onclick="toggleTorch()" title="Torch">
+<svg fill="none" height="18" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="18"><path d="M9 2h6v7l3 3H6l3-3z"></path><rect height="4" rx="1" width="6" x="9" y="18"></rect><line x1="12" x2="12" y1="12" y2="18"></line></svg>
+</button>
+</div>
+</div>
+</div>
+<header>
+<div class="logo"><div class="logo-dot"></div>TranslatorAI</div>
+<div class="header-status"><div class="status-dot"></div>Offline · On-Device AI</div>
+</header>
+<main>
+<div class="hero">
+<div class="hero-tag"><svg fill="currentColor" height="10" viewbox="0 0 10 10" width="10"><circle cx="5" cy="5" r="5"></circle></svg>Edge AI · No Internet Required</div>
+<h1>Translate Any Input Into<br/><span>Multilingual Output</span></h1>
+<p>Process images, speech, and text through our unified AI pipeline — fully offline, all 12 Indian languages.</p>
+</div>
+<div class="mode-tabs">
+<button class="tab-btn active" onclick="switchTab('image',this)">
+<svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="15"><rect height="18" rx="2" width="18" x="3" y="3"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+<span class="tab-label">Image / OCR</span>
+</button>
+<button class="tab-btn" onclick="switchTab('speech',this)">
+<svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="15"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="23"></line><line x1="8" x2="16" y1="23" y2="23"></line></svg>
+<span class="tab-label">Speech / STT</span>
+</button>
+<button class="tab-btn" onclick="switchTab('text',this)">
+<svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="15"><line x1="17" x2="3" y1="10" y2="10"></line><line x1="21" x2="3" y1="6" y2="6"></line><line x1="21" x2="3" y1="14" y2="14"></line><line x1="17" x2="3" y1="18" y2="18"></line></svg>
+<span class="tab-label">Text</span>
+</button>
+</div>
+<div class="card">
+<div class="card-header">
+<span class="card-title" id="cardTitle">Document OCR &amp; Translation</span>
+<span class="card-badge badge-blue" id="cardBadge">Tesseract + IndicTrans2</span>
+</div>
+<div class="card-body">
+<div class="panel active" id="panel-image">
+<input accept="image/*" id="imageInput" onchange="handleFileSelect(event)" style="display:none" type="file"/>
+<div id="inputChoiceRow">
+<button class="choice-btn choice-btn-cam" onclick="openCamera()">
+<div class="choice-icon choice-icon-cam">
+<svg fill="none" height="26" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24" width="26"><circle cx="12" cy="12" r="3"></circle><path d="M20 7h-3l-2-3H9L7 7H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"></path></svg>
+</div>
+<div>
+<div class="choice-label" style="color:var(--accent);">Use Camera</div>
+<div class="choice-sublabel">Take a high-res photo of a document, sign board or printed text</div>
+</div>
+</button>
+<button class="choice-btn choice-btn-upload" onclick="document.getElementById('imageInput').click()">
+<div class="choice-icon choice-icon-upload">
+<svg fill="none" height="26" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24" width="26"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" x2="12" y1="3" y2="15"></line></svg>
+</div>
+<div>
+<div class="choice-label" style="color:var(--accent2);">Upload Image</div>
+<div class="choice-sublabel">Browse a PNG, JPG or WEBP file from your device</div>
+</div>
+</button>
+</div>
+<div class="upload-zone" id="uploadZone" onclick="document.getElementById('imageInput').click()" ondragleave="handleDrag(event,false)" ondragover="handleDrag(event,true)" ondrop="handleDrop(event)">
+<p>or drag &amp; drop a file here</p>
+</div>
+<div id="imagePreviewWrap">
+<img alt="Preview" id="previewImg" src=""/>
+<button class="preview-remove" onclick="clearImage()">✕</button>
+</div>
+<div id="enhancementPanel">
+<div class="enh-title">
+<svg fill="none" height="13" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="13"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+            Image Enhancement — improves OCR accuracy
+          </div>
+<div class="enh-grid">
+<div class="enh-row">
+<label>Brightness <span id="brightVal">100</span>%</label>
+<input id="brightSlider" max="160" min="60" oninput="updateEnhancement()" type="range" value="100"/>
+</div>
+<div class="enh-row">
+<label>Contrast <span id="contrastVal">100</span>%</label>
+<input id="contrastSlider" max="200" min="60" oninput="updateEnhancement()" type="range" value="100"/>
+</div>
+<div class="enh-row">
+<label>Sharpness <span id="sharpVal">0</span></label>
+<input id="sharpSlider" max="3" min="0" oninput="updateEnhancement()" step="0.5" type="range" value="0"/>
+</div>
+<div class="enh-row">
+<label>Grayscale <span id="grayVal">0</span>%</label>
+<input id="graySlider" max="100" min="0" oninput="updateEnhancement()" type="range" value="0"/>
+</div>
+</div>
+<div class="enh-actions">
+<button class="enh-btn" onclick="resetEnhancement()">Reset</button>
+<button class="enh-btn" onclick="presetDocument()"> Document preset</button>
+<button class="enh-btn primary" onclick="applyEnhancement()">Apply &amp; Use</button>
+</div>
+<canvas id="enhCanvas" style="display:none;"></canvas>
+</div>
+<div class="lang-row">
+<div class="lang-col"><div class="lang-section"><label>Source Language</label><div class="lang-grid" id="srcLangGrid-image">
+<button class="lang-chip selected" data-val="auto" onclick="selectLang(this,'src','image')">Auto<span class="lang-native">Detect</span></button>
+<button class="lang-chip" data-val="tam_Taml" onclick="selectLang(this,'src','image')">Tamil<span class="lang-native">தமிழ்</span></button>
+<button class="lang-chip" data-val="hin_Deva" onclick="selectLang(this,'src','image')">Hindi<span class="lang-native">हिन्दी</span></button>
+<button class="lang-chip" data-val="tel_Telu" onclick="selectLang(this,'src','image')">Telugu<span class="lang-native">తెలుగు</span></button>
+<button class="lang-chip" data-val="eng_Latn" onclick="selectLang(this,'src','image')">English<span class="lang-native">English</span></button>
+<button class="lang-chip" data-val="ben_Beng" onclick="selectLang(this,'src','image')">Bengali<span class="lang-native">বাংলা</span></button>
+<button class="lang-chip" data-val="mal_Mlym" onclick="selectLang(this,'src','image')">Malayalam<span class="lang-native">മലയാളം</span></button>
+<button class="lang-chip" data-val="kan_Knda" onclick="selectLang(this,'src','image')">Kannada<span class="lang-native">ಕನ್ನಡ</span></button>
+<button class="lang-chip" data-val="guj_Gujr" onclick="selectLang(this,'src','image')">Gujarati<span class="lang-native">ગુજરાતી</span></button>
+<button class="lang-chip" data-val="mar_Deva" onclick="selectLang(this,'src','image')">Marathi<span class="lang-native">मराठी</span></button>
+<button class="lang-chip" data-val="pan_Guru" onclick="selectLang(this,'src','image')">Punjabi<span class="lang-native">ਪੰਜਾਬੀ</span></button>
+<button class="lang-chip" data-val="urd_Arab" onclick="selectLang(this,'src','image')">Urdu<span class="lang-native">اردو</span></button>
+</div></div></div>
+<div class="lang-arrow"><svg fill="none" height="18" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="18"><line x1="5" x2="19" y1="12" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></div>
+<div class="lang-col"><div class="lang-section"><label>Target Language</label><div class="lang-grid" id="tgtLangGrid-image">
+<button class="lang-chip selected" data-val="eng_Latn" onclick="selectLang(this,'tgt','image')">English<span class="lang-native">English</span></button>
+<button class="lang-chip" data-val="tam_Taml" onclick="selectLang(this,'tgt','image')">Tamil<span class="lang-native">தமிழ்</span></button>
+<button class="lang-chip" data-val="hin_Deva" onclick="selectLang(this,'tgt','image')">Hindi<span class="lang-native">हिन्दी</span></button>
+<button class="lang-chip" data-val="tel_Telu" onclick="selectLang(this,'tgt','image')">Telugu<span class="lang-native">తెలుగు</span></button>
+<button class="lang-chip" data-val="ben_Beng" onclick="selectLang(this,'tgt','image')">Bengali<span class="lang-native">বাংলা</span></button>
+<button class="lang-chip" data-val="mal_Mlym" onclick="selectLang(this,'tgt','image')">Malayalam<span class="lang-native">മലയാളം</span></button>
+<button class="lang-chip" data-val="kan_Knda" onclick="selectLang(this,'tgt','image')">Kannada<span class="lang-native">ಕನ್ನಡ</span></button>
+<button class="lang-chip" data-val="guj_Gujr" onclick="selectLang(this,'tgt','image')">Gujarati<span class="lang-native">ગુજરાતી</span></button>
+<button class="lang-chip" data-val="mar_Deva" onclick="selectLang(this,'tgt','image')">Marathi<span class="lang-native">मराठी</span></button>
+<button class="lang-chip" data-val="pan_Guru" onclick="selectLang(this,'tgt','image')">Punjabi<span class="lang-native">ਪੰਜਾਬੀ</span></button>
+<button class="lang-chip" data-val="urd_Arab" onclick="selectLang(this,'tgt','image')">Urdu<span class="lang-native">اردو</span></button>
+<button class="lang-chip" data-val="ory_Orya" onclick="selectLang(this,'tgt','image')">Odia<span class="lang-native">ଓଡ଼ିଆ</span></button>
+</div></div></div>
+</div>
+<div class="model-info">
+<span class="model-tag"><span class="model-tag-dot" style="background:#63d2ff"></span>OCR: Tesseract</span>
+<span class="model-tag"><span class="model-tag-dot" style="background:#a78bfa"></span>NMT: IndicTrans2</span>
+<span class="model-tag"><span class="model-tag-dot" style="background:#34d399"></span>TTS: Piper+eSpeak</span>
+</div>
+<button class="submit-btn submit-btn-image" id="imageSubmitBtn" onclick="submitImage()">
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Process &amp; Translate Document
+        </button>
+</div>
+<div class="panel" id="panel-speech">
+<button class="mic-button" id="micBtn" onclick="toggleRecording()">
+<div class="mic-ring">
+<svg fill="none" height="28" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24" width="28"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="23"></line><line x1="8" x2="16" y1="23" y2="23"></line></svg>
+</div>
+<div class="waveform" id="waveform">
+<div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+<div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+</div>
+<span id="micLabel" style="font-size:0.85rem;font-weight:500;">Tap to start recording</span>
+<span id="micSubLabel" style="font-size:0.72rem;color:var(--muted);">Speak → Whisper STT → Translation</span>
+</button>
+<div style="margin-top:1rem;text-align:center;color:var(--muted);font-size:0.78rem;margin-bottom:0.5rem;">— or upload an audio file —</div>
+<div class="upload-zone" onclick="document.getElementById('audioInput').click()" style="padding:1.2rem;">
+<input accept="audio/*" id="audioInput" onchange="handleAudioSelect(event)" style="position:absolute;opacity:0;pointer-events:none" type="file"/>
+<div style="display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:0.82rem;">
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" x2="12" y1="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
+            Upload WAV / MP3 / M4A / OGG
+          </div>
+<div id="audioFileName" style="font-size:0.75rem;color:var(--accent);margin-top:4px;display:none;"></div>
+</div>
+<div class="lang-section" style="margin-top:1.2rem;"><label>Target Language</label><div class="lang-grid" id="tgtLangGrid-speech">
+<button class="lang-chip selected" data-val="eng_Latn" onclick="selectLang(this,'tgt','speech')">English<span class="lang-native">English</span></button>
+<button class="lang-chip" data-val="tam_Taml" onclick="selectLang(this,'tgt','speech')">Tamil<span class="lang-native">தமிழ்</span></button>
+<button class="lang-chip" data-val="hin_Deva" onclick="selectLang(this,'tgt','speech')">Hindi<span class="lang-native">हिन्दी</span></button>
+<button class="lang-chip" data-val="tel_Telu" onclick="selectLang(this,'tgt','speech')">Telugu<span class="lang-native">తెలుగు</span></button>
+<button class="lang-chip" data-val="ben_Beng" onclick="selectLang(this,'tgt','speech')">Bengali<span class="lang-native">বাংলা</span></button>
+<button class="lang-chip" data-val="mal_Mlym" onclick="selectLang(this,'tgt','speech')">Malayalam<span class="lang-native">മലയാളം</span></button>
+<button class="lang-chip" data-val="kan_Knda" onclick="selectLang(this,'tgt','speech')">Kannada<span class="lang-native">ಕನ್ನಡ</span></button>
+<button class="lang-chip" data-val="guj_Gujr" onclick="selectLang(this,'tgt','speech')">Gujarati<span class="lang-native">ગુજરાતી</span></button>
+<button class="lang-chip" data-val="mar_Deva" onclick="selectLang(this,'tgt','speech')">Marathi<span class="lang-native">मराठी</span></button>
+<button class="lang-chip" data-val="pan_Guru" onclick="selectLang(this,'tgt','speech')">Punjabi<span class="lang-native">ਪੰਜਾਬੀ</span></button>
+<button class="lang-chip" data-val="urd_Arab" onclick="selectLang(this,'tgt','speech')">Urdu<span class="lang-native">اردو</span></button>
+<button class="lang-chip" data-val="ory_Orya" onclick="selectLang(this,'tgt','speech')">Odia<span class="lang-native">ଓଡ଼ିଆ</span></button>
+</div></div>
+<div class="model-info">
+<span class="model-tag"><span class="model-tag-dot" style="background:#a78bfa"></span>STT: Whisper Base</span>
+<span class="model-tag"><span class="model-tag-dot" style="background:#63d2ff"></span>NMT: IndicTrans2</span>
+<span class="model-tag"><span class="model-tag-dot" style="background:#fb923c"></span>TTS: Piper+eSpeak</span>
+</div>
+<button class="submit-btn submit-btn-speech" id="speechSubmitBtn" onclick="submitSpeech()">
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Transcribe &amp; Translate
+        </button>
+</div>
+<div class="panel" id="panel-text">
+<label style="font-size:0.75rem;font-weight:500;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;display:block;margin-bottom:0.6rem;">Enter Text</label>
+<textarea class="styled-textarea" id="textInput" placeholder="Type or paste text in any supported language…" rows="5"></textarea>
+<div id="charCount" style="text-align:right;font-size:0.72rem;color:var(--muted);margin-top:4px;">0 characters</div>
+<div class="lang-row">
+<div class="lang-col"><div class="lang-section"><label>Source Language</label><div class="lang-grid" id="srcLangGrid-text">
+<button class="lang-chip selected" data-val="auto" onclick="selectLang(this,'src','text')">Auto<span class="lang-native">Detect</span></button>
+<button class="lang-chip" data-val="tam_Taml" onclick="selectLang(this,'src','text')">Tamil<span class="lang-native">தமிழ்</span></button>
+<button class="lang-chip" data-val="hin_Deva" onclick="selectLang(this,'src','text')">Hindi<span class="lang-native">हिन्दी</span></button>
+<button class="lang-chip" data-val="tel_Telu" onclick="selectLang(this,'src','text')">Telugu<span class="lang-native">తెలుగు</span></button>
+<button class="lang-chip" data-val="eng_Latn" onclick="selectLang(this,'src','text')">English<span class="lang-native">English</span></button>
+<button class="lang-chip" data-val="ben_Beng" onclick="selectLang(this,'src','text')">Bengali<span class="lang-native">বাংলা</span></button>
+<button class="lang-chip" data-val="mal_Mlym" onclick="selectLang(this,'src','text')">Malayalam<span class="lang-native">മലയാളം</span></button>
+<button class="lang-chip" data-val="kan_Knda" onclick="selectLang(this,'src','text')">Kannada<span class="lang-native">ಕನ್ನಡ</span></button>
+<button class="lang-chip" data-val="guj_Gujr" onclick="selectLang(this,'src','text')">Gujarati<span class="lang-native">ગુજરાતી</span></button>
+<button class="lang-chip" data-val="mar_Deva" onclick="selectLang(this,'src','text')">Marathi<span class="lang-native">मराठी</span></button>
+<button class="lang-chip" data-val="pan_Guru" onclick="selectLang(this,'src','text')">Punjabi<span class="lang-native">ਪੰਜਾਬੀ</span></button>
+<button class="lang-chip" data-val="urd_Arab" onclick="selectLang(this,'src','text')">Urdu<span class="lang-native">اردو</span></button>
+</div></div></div>
+<div class="lang-arrow"><svg fill="none" height="18" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="18"><line x1="5" x2="19" y1="12" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></div>
+<div class="lang-col"><div class="lang-section"><label>Target Language</label><div class="lang-grid" id="tgtLangGrid-text">
+<button class="lang-chip selected" data-val="eng_Latn" onclick="selectLang(this,'tgt','text')">English<span class="lang-native">English</span></button>
+<button class="lang-chip" data-val="tam_Taml" onclick="selectLang(this,'tgt','text')">Tamil<span class="lang-native">தமிழ்</span></button>
+<button class="lang-chip" data-val="hin_Deva" onclick="selectLang(this,'tgt','text')">Hindi<span class="lang-native">हिन्दी</span></button>
+<button class="lang-chip" data-val="tel_Telu" onclick="selectLang(this,'tgt','text')">Telugu<span class="lang-native">తెలుగు</span></button>
+<button class="lang-chip" data-val="ben_Beng" onclick="selectLang(this,'tgt','text')">Bengali<span class="lang-native">বাংলা</span></button>
+<button class="lang-chip" data-val="mal_Mlym" onclick="selectLang(this,'tgt','text')">Malayalam<span class="lang-native">മലയാളം</span></button>
+<button class="lang-chip" data-val="kan_Knda" onclick="selectLang(this,'tgt','text')">Kannada<span class="lang-native">ಕನ್ನಡ</span></button>
+<button class="lang-chip" data-val="guj_Gujr" onclick="selectLang(this,'tgt','text')">Gujarati<span class="lang-native">ગુજરાતી</span></button>
+<button class="lang-chip" data-val="mar_Deva" onclick="selectLang(this,'tgt','text')">Marathi<span class="lang-native">मराठी</span></button>
+<button class="lang-chip" data-val="pan_Guru" onclick="selectLang(this,'tgt','text')">Punjabi<span class="lang-native">ਪੰਜਾਬੀ</span></button>
+<button class="lang-chip" data-val="urd_Arab" onclick="selectLang(this,'tgt','text')">Urdu<span class="lang-native">اردو</span></button>
+<button class="lang-chip" data-val="ory_Orya" onclick="selectLang(this,'tgt','text')">Odia<span class="lang-native">ଓଡ଼ିଆ</span></button>
+</div></div></div>
+</div>
+<div class="model-info">
+<span class="model-tag"><span class="model-tag-dot" style="background:#63d2ff"></span>NMT: IndicTrans2</span>
+<span class="model-tag"><span class="model-tag-dot" style="background:#fb923c"></span>TTS: Piper+eSpeak</span>
+</div>
+<button class="submit-btn submit-btn-text" id="textSubmitBtn" onclick="submitText()">
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Translate Text
+        </button>
+</div>
+<div class="status-bar" id="statusBar">
+<div class="spinner" id="statusSpinner"></div>
+<span id="statusMsg"></span>
+</div>
+<div id="resultsArea" style="display:none;">
+<div class="results-grid">
+<div class="result-box">
+<div class="result-box-header">
+<span class="result-box-title">Original / Extracted</span>
+<button class="copy-btn" onclick="copyText('extractedText')">
+<svg fill="none" height="11" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="11"><rect height="13" rx="2" width="13" x="9" y="9"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy
+              </button>
+</div>
+<div class="result-box-body" id="extractedText">—</div>
+</div>
+<div class="result-box translated">
+<div class="result-box-header">
+<span class="result-box-title">Translated</span>
+<button class="copy-btn" onclick="copyText('translatedText')">
+<svg fill="none" height="11" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="11"><rect height="13" rx="2" width="13" x="9" y="9"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy
+              </button>
+</div>
+<div class="result-box-body" id="translatedText">—</div>
+</div>
+</div>
+<div class="audio-section" id="audioOutput">
+<label>Generated Audio (TTS)</label>
+<audio controls="" id="audioPlayer"></audio>
+</div>
+<div id="translated-image-container">
+<div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;justify-content:center;gap:6px;">
+<svg fill="none" height="14" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="14"><rect height="18" rx="2" width="18" x="3" y="3"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            In-Place Document Translation
+          </div>
+<img alt="Translated Document" id="backend-image-result" src=""/>
+<button id="downloadImgBtn" onclick="downloadTranslatedImage()" style="display:none;margin-top:10px;padding:8px 18px;background:rgba(99,210,255,0.1);border:1px solid rgba(99,210,255,0.3);border-radius:10px;color:var(--accent);font-family:var(--font-body);font-size:0.78rem;font-weight:600;cursor:pointer;">
+<svg fill="none" height="13" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:4px" viewbox="0 0 24 24" width="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+            Download Translated Image
+          </button>
+</div>
+<div class="stats-row" id="statsRow"></div>
+</div>
+</div>
+</div>
+</main>
+
+<script src="js/utils.js"></script><script src="js/api.js"></script><script src="js/ui.js"></script><script src="js/language.js"></script><script src="js/camera.js"></script><script src="js/enhancement.js"></script><script src="js/image.js"></script><script src="js/speech.js"></script><script src="js/text.js"></script><script src="js/app.js"></script></body>
+</html>

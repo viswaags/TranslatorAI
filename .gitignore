@@ -1,0 +1,17 @@
+venv/
+.env
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+download_voice.py
+
+tests
+tests/audio/
+tests/image/
+
+.DS_Store
+Thumbs.db

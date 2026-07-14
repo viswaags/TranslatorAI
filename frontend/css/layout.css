@@ -1,0 +1,39 @@
+    /* ── HEADER ── */
+    header{position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);
+      background:rgba(8,12,16,0.85);border-bottom:1px solid var(--border);
+      padding:0 2rem;height:60px;display:flex;align-items:center;justify-content:space-between;}
+    .logo{font-family:var(--font-head);font-size:1.2rem;font-weight:800;letter-spacing:-0.02em;display:flex;align-items:center;gap:10px;}
+    .logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse-dot 2s ease-in-out infinite;}
+    @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.6;transform:scale(0.8);}}
+    .header-status{display:flex;align-items:center;gap:6px;font-size:0.75rem;color:var(--accent3);font-weight:500;letter-spacing:0.05em;text-transform:uppercase;}
+    .status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent3);animation:pulse-dot 1.5s ease-in-out infinite;}
+
+    /* ── LAYOUT ── */
+    main{position:relative;z-index:1;max-width:900px;margin:0 auto;padding:3rem 1.5rem 5rem;}
+    @keyframes fade-up{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);}}
+
+    /* ── HERO ── */
+    .hero{text-align:center;margin-bottom:3rem;animation:fade-up 0.6s ease both;}
+    .hero-tag{display:inline-flex;align-items:center;gap:6px;font-size:0.7rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);border:1px solid rgba(99,210,255,0.25);border-radius:100px;padding:5px 14px;margin-bottom:1.5rem;}
+    .hero h1{font-family:var(--font-head);font-size:clamp(2rem,5vw,3.2rem);font-weight:800;letter-spacing:-0.03em;line-height:1.1;margin-bottom:1rem;}
+    .hero h1 span{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .hero p{color:var(--muted);font-size:1rem;font-weight:300;max-width:460px;margin:0 auto;line-height:1.7;}
+
+    /* ── TABS ── */
+    .mode-tabs{display:flex;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px;margin-bottom:1.5rem;animation:fade-up 0.6s 0.1s ease both;}
+    .tab-btn{flex:1;padding:10px 8px;border:none;border-radius:10px;background:transparent;color:var(--muted);font-family:var(--font-body);font-size:0.82rem;font-weight:500;cursor:pointer;transition:all 0.2s ease;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;}
+    .tab-btn svg{flex-shrink:0;}
+    .tab-btn:hover{color:var(--text);background:rgba(255,255,255,0.04);}
+    .tab-btn.active{background:linear-gradient(135deg,rgba(99,210,255,0.15),rgba(167,139,250,0.15));color:var(--accent);border:1px solid rgba(99,210,255,0.2);}
+
+    /* ── CARD ── */
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:20px;overflow:hidden;animation:fade-up 0.6s 0.2s ease both;}
+    .card-header{padding:1.2rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+    .card-title{font-family:var(--font-head);font-size:0.85rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);}
+    .card-badge{font-size:0.65rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;padding:3px 10px;border-radius:100px;}
+    .badge-blue{background:rgba(99,210,255,0.12);color:var(--accent);border:1px solid rgba(99,210,255,0.2);}
+    .badge-purple{background:rgba(167,139,250,0.12);color:var(--accent2);border:1px solid rgba(167,139,250,0.2);}
+    .badge-green{background:rgba(52,211,153,0.12);color:var(--accent3);border:1px solid rgba(52,211,153,0.2);}
+    .card-body{padding:1.5rem;}
+    .panel{display:none;}.panel.active{display:block;}
+

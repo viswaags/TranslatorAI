@@ -1,0 +1,46 @@
+    /* ── CAMERA MODAL ── */
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:500;align-items:center;justify-content:center;flex-direction:column;gap:0;}
+    .modal-overlay.show{display:flex;}
+    .cam-modal-inner{width:100%;max-width:700px;display:flex;flex-direction:column;align-items:center;gap:0;padding:0 16px;}
+    .cam-topbar{width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 0;margin-bottom:4px;}
+    .cam-topbar-title{font-family:var(--font-head);font-size:0.9rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;}
+    .cam-res-badge{font-size:0.65rem;background:rgba(99,210,255,0.12);border:1px solid rgba(99,210,255,0.2);color:var(--accent);padding:3px 9px;border-radius:100px;letter-spacing:0.06em;}
+    .cam-close-btn{width:32px;height:32px;background:rgba(255,255,255,0.08);border:1px solid var(--border);border-radius:50%;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all 0.2s;}
+    .cam-close-btn:hover{background:rgba(248,113,113,0.2);color:var(--danger);border-color:rgba(248,113,113,0.3);}
+
+    /* Video wrapper with guide overlay */
+    .video-wrap{position:relative;width:100%;max-width:700px;border-radius:16px;overflow:hidden;background:#000;border:1px solid var(--border2);}
+    #cameraVideo{width:100%;height:auto;min-height:280px;max-height:55vh;display:block;object-fit:cover;}
+
+    /* Document guide corners */
+    .cam-guide{position:absolute;inset:10%;pointer-events:none;}
+    .cam-guide::before,.cam-guide::after,
+    .cam-guide .tl,.cam-guide .tr,.cam-guide .bl,.cam-guide .br{position:absolute;width:24px;height:24px;border-color:rgba(99,210,255,0.7);border-style:solid;}
+    .cam-guide .tl{top:0;left:0;border-width:3px 0 0 3px;border-radius:3px 0 0 0;}
+    .cam-guide .tr{top:0;right:0;border-width:3px 3px 0 0;border-radius:0 3px 0 0;}
+    .cam-guide .bl{bottom:0;left:0;border-width:0 0 3px 3px;border-radius:0 0 0 3px;}
+    .cam-guide .br{bottom:0;right:0;border-width:0 3px 3px 0;border-radius:0 0 3px 0;}
+
+    /* Focus indicator */
+    #focusIndicator{position:absolute;width:60px;height:60px;border:2px solid rgba(99,210,255,0.8);border-radius:4px;pointer-events:none;display:none;transform:translate(-50%,-50%);animation:focus-anim 0.4s ease forwards;}
+    @keyframes focus-anim{0%{width:80px;height:80px;opacity:0;}100%{width:60px;height:60px;opacity:1;}}
+
+    /* Camera tip bar */
+    .cam-tip{width:100%;max-width:700px;display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(99,210,255,0.06);border:1px solid rgba(99,210,255,0.12);border-radius:10px;margin-top:8px;font-size:0.75rem;color:var(--muted);}
+    .cam-tip svg{color:var(--accent);flex-shrink:0;}
+    #camTipText{transition:all 0.3s;}
+
+    /* Camera bottom controls */
+    .cam-controls{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:14px;width:100%;max-width:700px;}
+    .cam-side-btn{width:44px;height:44px;border-radius:50%;border:1px solid var(--border2);background:rgba(255,255,255,0.06);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0;}
+    .cam-side-btn:hover{border-color:rgba(99,210,255,0.3);color:var(--accent);}
+    .cam-side-btn.active{border-color:rgba(99,210,255,0.5);background:rgba(99,210,255,0.1);color:var(--accent);}
+    .cam-capture-btn{width:68px;height:68px;border-radius:50%;border:3px solid rgba(99,210,255,0.5);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0;position:relative;}
+    .cam-capture-btn::after{content:'';position:absolute;width:54px;height:54px;border-radius:50%;background:var(--accent);transition:all 0.15s;}
+    .cam-capture-btn:hover{border-color:rgba(99,210,255,0.9);}
+    .cam-capture-btn:hover::after{background:#fff;box-shadow:0 0 20px rgba(99,210,255,0.5);}
+    .cam-capture-btn:active::after{transform:scale(0.88);}
+
+    /* Flash overlay for capture effect */
+    #flashOverlay{position:fixed;inset:0;background:white;opacity:0;pointer-events:none;z-index:600;transition:opacity 0.08s;}
+

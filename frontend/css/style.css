@@ -1,0 +1,28 @@
+
+    @font-face{font-family:'NotoIndic';src:url('/static/noto-tamil.woff2') format('woff2');unicode-range:U+0B80-U+0BFF;}
+    @font-face{font-family:'NotoIndic';src:url('/static/noto-devanagari.woff2') format('woff2');unicode-range:U+0900-U+097F;}
+    @font-face{font-family:'NotoIndic';src:url('/static/noto-telugu.woff2') format('woff2');unicode-range:U+0C00-U+0C7F;}
+    @font-face{font-family:'NotoIndic';src:url('/static/noto-bengali.woff2') format('woff2');unicode-range:U+0980-U+09FF;}
+    @font-face{font-family:'NotoIndic';src:url('/static/noto-malayalam.woff2') format('woff2');unicode-range:U+0D00-U+0D7F;}
+    @font-face{font-family:'NotoIndic';src:url('/static/noto-kannada.woff2') format('woff2');unicode-range:U+0C80-U+0CFF;}
+    @font-face{font-family:'NotoIndic';src:url('/static/noto-gujarati.woff2') format('woff2');unicode-range:U+0A80-U+0AFF;}
+    @font-face{font-family:'NotoIndic';src:url('/static/noto-gurmukhi.woff2') format('woff2');unicode-range:U+0A00-U+0A7F;}
+
+    :root{
+      --bg:#080c10;--surface:#0f1419;--surface2:#161d26;--surface3:#1e2733;
+      --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+      --accent:#63d2ff;--accent2:#a78bfa;--accent3:#34d399;--accent4:#fb923c;
+      --text:#e8edf2;--muted:#6b7280;--danger:#f87171;
+      --font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    html{scroll-behavior:smooth;}
+    body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+    body::before{content:'';position:fixed;inset:0;background:
+      radial-gradient(ellipse 80% 60% at 10% 10%,rgba(99,210,255,0.06) 0%,transparent 60%),
+      radial-gradient(ellipse 60% 50% at 90% 80%,rgba(167,139,250,0.05) 0%,transparent 55%);
+      pointer-events:none;z-index:0;}
+    body::after{content:'';position:fixed;inset:0;
+      background-image:linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);
+      background-size:48px 48px;pointer-events:none;z-index:0;}
+
