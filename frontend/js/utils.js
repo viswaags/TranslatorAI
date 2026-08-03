@@ -9,10 +9,16 @@ const state = {
   mediaRecorder: null,
   audioChunks: [],
   selectedAudioFile: null,
-  processingStart: null,
   cameraStream: null,
   facingMode: 'environment',
   torchOn: false,
   originalImageBlob: null,
   enhancedImageBlob: null,
+  health: null,
+  languages: new Map(),
+  requests: {
+    image: null,
+    speech: null,
+    text: null,
+  },
 };

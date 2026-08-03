@@ -4,7 +4,7 @@ Text Pipeline
 POST /api/v1/text/translate
   - Accept plain text + target language
   - Auto-detect source language (parallel with translation start)
-  - Translate using IndicTrans2 (M2M-100 fallback commented)
+  - Translate using local IndicTrans2 CTranslate2 models
   - Optionally synthesise translated text to speech (TTS)
 
 POST /api/v1/text/detect-language
@@ -19,13 +19,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from core.registry import ServiceRegistry
-from models.schemas import (
+from ai_translator_api.core.registry import ServiceRegistry
+from ai_translator_api.models.schemas import (
     TTSResult,
     TextTranslateRequest,
     TextTranslateResponse,
 )
-from utils.language_detector import LANGUAGE_NAMES
+from ai_translator_api.utils.language_detector import LANGUAGE_NAMES
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -73,16 +73,12 @@ async def translate_text(
     target_lang = body.target_lang
 
     # ── Step 2: Translate ──────────────────────────────────────────────────────
-    try:
-        trans_result = await asyncio.to_thread(
-            translation_svc.translate,
-            body.text,
-            target_lang,
-            src_lang,
-        )
-    except Exception as e:
-        logger.error("Translation failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Translation error: {e}")
+    trans_result = await asyncio.to_thread(
+        translation_svc.translate,
+        body.text,
+        target_lang,
+        src_lang,
+    )
 
     translated_text = trans_result["translated_text"]
     translation_engine = trans_result["engine"]

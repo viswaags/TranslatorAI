@@ -6,46 +6,9 @@ Request/Response schemas for all API endpoints.
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
-
-
-# ── Supported language codes ──────────────────────────────────────────────────
-
-class Language(str, Enum):
-    """IndicTrans2 language codes supported across the pipeline."""
-    ENGLISH    = "eng_Latn"
-    TAMIL      = "tam_Taml"
-    HINDI      = "hin_Deva"
-    TELUGU     = "tel_Telu"
-    KANNADA    = "kan_Knda"
-    MALAYALAM  = "mal_Mlym"
-    BENGALI    = "ben_Beng"
-    GUJARATI   = "guj_Gujr"
-    MARATHI    = "mar_Deva"
-    PUNJABI    = "pan_Guru"
-    ODIA       = "ory_Orya"
-    URDU       = "urd_Arab"
-    ASSAMESE   = "asm_Beng"
-
-
-LANGUAGE_NAMES = {
-    "eng_Latn": "English",
-    "tam_Taml": "Tamil",
-    "hin_Deva": "Hindi",
-    "tel_Telu": "Telugu",
-    "kan_Knda": "Kannada",
-    "mal_Mlym": "Malayalam",
-    "ben_Beng": "Bengali",
-    "guj_Gujr": "Gujarati",
-    "mar_Deva": "Marathi",
-    "pan_Guru": "Punjabi",
-    "ory_Orya": "Odia",
-    "urd_Arab": "Urdu",
-    "asm_Beng": "Assamese",
-}
 
 
 # ── TTS config embedded in requests ──────────────────────────────────────────
@@ -54,9 +17,14 @@ class TTSOptions(BaseModel):
     enabled: bool = True
     engine: str = Field(
         default="auto",
-        description="'auto' | 'indic_parler' | 'espeak' | 'piper'",
+        description="Speech synthesis engine: 'auto' or 'piper'",
     )
-    speed: int = Field(default=150, ge=80, le=350, description="eSpeak WPM")
+    speed: int = Field(
+        default=150,
+        ge=80,
+        le=350,
+        description="Piper speech speed; 150 is the default",
+    )
     return_audio: bool = Field(
         default=True,
         description="If True, return base64 WAV audio in the response",
@@ -93,7 +61,7 @@ class TextTranslateResponse(BaseModel):
     target_lang: str
     target_lang_name: str
     translated_text: str
-    translation_engine: str          # "indictrans2" | "m2m100"
+    translation_engine: str          # "indictrans2" | "passthrough"
     tts: Optional["TTSResult"] = None
     processing_ms: int
     error: Optional[str] = None
@@ -110,23 +78,10 @@ class OCRExtractResponse(BaseModel):
     detected_lang: str
     detected_lang_name: str
     ocr_confidence: float
-    ocr_engine_used: str             # "paddle" | "tesseract" | "paddle+tesseract"
+    ocr_engine_used: str             # "paddle"
     llm_corrected: bool
     processing_ms: int
     error: Optional[str] = None
-
-
-class OCRTranslateRequest(BaseModel):
-    """
-    Sent as form-data alongside the image file upload.
-    Target language is required; source language is auto-detected from the image.
-    """
-    target_lang: str = Field(..., description="Target language code")
-    source_lang_hint: Optional[str] = Field(
-        default=None,
-        description="Optional hint for OCR language detection",
-    )
-    tts: TTSOptions = Field(default_factory=TTSOptions)
 
 
 class OCRTranslateResponse(BaseModel):
@@ -172,7 +127,7 @@ class SpeechTranslateResponse(BaseModel):
 
 class TTSResult(BaseModel):
     success: bool
-    engine_used: Optional[str]          # "indic_parler" | "espeak" | "piper"
+    engine_used: Optional[str]          # "piper" when synthesis succeeds
     audio_base64: Optional[str]         # WAV bytes, base64-encoded
     audio_format: str = "wav"
     sample_rate: int = 22050
@@ -185,6 +140,7 @@ class TTSResult(BaseModel):
 
 class ServiceStatus(BaseModel):
     loaded: bool
+    available: Optional[bool] = None
     model_name: Optional[str] = None
     info: Optional[str] = None
 

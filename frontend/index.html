@@ -71,7 +71,7 @@
 <div class="card">
 <div class="card-header">
 <span class="card-title" id="cardTitle">Document OCR &amp; Translation</span>
-<span class="card-badge badge-blue" id="cardBadge">Tesseract + IndicTrans2</span>
+<span class="card-badge badge-blue" id="cardBadge">PaddleOCR + IndicTrans2</span>
 </div>
 <div class="card-body">
 <div class="panel active" id="panel-image">
@@ -165,9 +165,9 @@
 </div></div></div>
 </div>
 <div class="model-info">
-<span class="model-tag"><span class="model-tag-dot" style="background:#63d2ff"></span>OCR: Tesseract</span>
+<span class="model-tag"><span class="model-tag-dot" style="background:#63d2ff"></span>OCR: PaddleOCR</span>
 <span class="model-tag"><span class="model-tag-dot" style="background:#a78bfa"></span>NMT: IndicTrans2</span>
-<span class="model-tag"><span class="model-tag-dot" style="background:#34d399"></span>TTS: Piper+eSpeak</span>
+<span class="model-tag"><span class="model-tag-dot" style="background:#34d399"></span>TTS: Piper</span>
 </div>
 <button class="submit-btn submit-btn-image" id="imageSubmitBtn" onclick="submitImage()">
 <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
@@ -184,7 +184,7 @@
 <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
 </div>
 <span id="micLabel" style="font-size:0.85rem;font-weight:500;">Tap to start recording</span>
-<span id="micSubLabel" style="font-size:0.72rem;color:var(--muted);">Speak → Whisper STT → Translation</span>
+<span id="micSubLabel" style="font-size:0.72rem;color:var(--muted);">Speak → Faster Whisper → IndicTrans2</span>
 </button>
 <div style="margin-top:1rem;text-align:center;color:var(--muted);font-size:0.78rem;margin-bottom:0.5rem;">— or upload an audio file —</div>
 <div class="upload-zone" onclick="document.getElementById('audioInput').click()" style="padding:1.2rem;">
@@ -210,9 +210,9 @@
 <button class="lang-chip" data-val="ory_Orya" onclick="selectLang(this,'tgt','speech')">Odia<span class="lang-native">ଓଡ଼ିଆ</span></button>
 </div></div>
 <div class="model-info">
-<span class="model-tag"><span class="model-tag-dot" style="background:#a78bfa"></span>STT: Whisper Base</span>
+<span class="model-tag"><span class="model-tag-dot" style="background:#a78bfa"></span>STT: Faster Whisper</span>
 <span class="model-tag"><span class="model-tag-dot" style="background:#63d2ff"></span>NMT: IndicTrans2</span>
-<span class="model-tag"><span class="model-tag-dot" style="background:#fb923c"></span>TTS: Piper+eSpeak</span>
+<span class="model-tag"><span class="model-tag-dot" style="background:#fb923c"></span>TTS: Piper</span>
 </div>
 <button class="submit-btn submit-btn-speech" id="speechSubmitBtn" onclick="submitSpeech()">
 <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
@@ -256,7 +256,7 @@
 </div>
 <div class="model-info">
 <span class="model-tag"><span class="model-tag-dot" style="background:#63d2ff"></span>NMT: IndicTrans2</span>
-<span class="model-tag"><span class="model-tag-dot" style="background:#fb923c"></span>TTS: Piper+eSpeak</span>
+<span class="model-tag"><span class="model-tag-dot" style="background:#fb923c"></span>TTS: Piper</span>
 </div>
 <button class="submit-btn submit-btn-text" id="textSubmitBtn" onclick="submitText()">
 <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>

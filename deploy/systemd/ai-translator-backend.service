@@ -1,0 +1,18 @@
+[Unit]
+Description=AI Translator backend
+After=network.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@PROJECT_DIR@
+ExecStart=@PROJECT_DIR@/deploy/start-backend.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

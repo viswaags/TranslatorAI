@@ -7,12 +7,23 @@ function handleDrop(e) {
   e.preventDefault();
   document.getElementById('uploadZone').classList.remove('dragover');
   const f = e.dataTransfer.files[0];
-  if (f && f.type.startsWith('image/')) showImagePreview(f);
+  if (!f) return;
+  try {
+    showImagePreview(validateImageUpload(f));
+  } catch (error) {
+    showStatus('error', errorMessage(error));
+  }
 }
 
 function handleFileSelect(e) {
   const f = e.target.files[0];
-  if (f) showImagePreview(f);
+  if (!f) return;
+  try {
+    showImagePreview(validateImageUpload(f));
+  } catch (error) {
+    e.target.value = '';
+    showStatus('error', errorMessage(error));
+  }
 }
 
 function showImagePreview(file) {
@@ -54,15 +65,30 @@ async function submitImage() {
     return;
   }
 
+  try {
+    validateImageUpload(fileToSend);
+  } catch (error) {
+    showStatus('error', errorMessage(error));
+    return;
+  }
+
+  const request = beginWorkflowRequest('image');
   const btn = document.getElementById('imageSubmitBtn');
   setLoading(btn, true, 'image');
-  showStatus('processing', 'Running OCR -> translating -> generating image overlay...');
+  showStatus('processing', 'Running PaddleOCR -> IndicTrans2 -> Piper audio...');
   hideResults();
-  state.processingStart = Date.now();
-
   const fd = new FormData();
   fd.append('file', fileToSend);
   fd.append('target_lang', state.langs.image.tgt);
-  fd.append('src_lang', state.langs.image.src);
-  await callAPI('/translate/image', fd, btn, 'image', true);
+  if (state.langs.image.src !== 'auto') {
+    fd.append('source_lang_hint', state.langs.image.src);
+  }
+  fd.append('tts_enabled', 'true');
+  fd.append('tts_engine', 'auto');
+  fd.append('tts_return_audio', 'true');
+  fd.append('tts_speed', '150');
+  await callAPI(API_ENDPOINTS.ocrTranslate, {
+    method: 'POST',
+    body: fd,
+  }, btn, 'image', request);
 }

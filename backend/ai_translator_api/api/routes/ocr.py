@@ -16,55 +16,80 @@ Both endpoints support optional source_lang_hint to improve OCR accuracy.
 import asyncio
 import json
 import logging
-import os
 import time
-import uuid
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from core.config import settings
-from core.registry import ServiceRegistry
-from models.schemas import (
+from ai_translator_api.core.config import settings
+from ai_translator_api.core.registry import ServiceRegistry
+from ai_translator_api.models.schemas import (
     OCRExtractResponse,
     OCRTranslateResponse,
     TTSResult,
 )
-from utils.language_detector import LANGUAGE_NAMES
+from ai_translator_api.services.ocr.ocr_service import (
+    OCRCorruptedImageError,
+    OCREmptyPageError,
+    OCRError,
+    OCRFileNotFoundError,
+    OCRInferenceError,
+    OCRLifecycleError,
+    OCRModelLoadError,
+    OCRModelUnavailableError,
+    OCRUnsupportedImageError,
+    OCRValidationError,
+)
+from ai_translator_api.utils.language_detector import LANGUAGE_NAMES
+from ai_translator_api.utils.uploads import UploadPolicy, managed_upload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/bmp", "image/tiff", "image/webp"}
-MAX_FILE_SIZE_MB = 10
+OCR_UPLOAD_POLICY = UploadPolicy(
+    name="image",
+    upload_dir=Path(settings.UPLOAD_DIR),
+    max_size_bytes=settings.OCR_MAX_UPLOAD_SIZE_BYTES,
+    chunk_size_bytes=settings.UPLOAD_CHUNK_SIZE_BYTES,
+    allowed_extensions=frozenset(settings.OCR_SUPPORTED_EXTENSIONS),
+    allowed_mime_types=frozenset(
+        {
+            "image/jpeg",
+            "image/png",
+            "image/bmp",
+            "image/tiff",
+            "image/webp",
+        }
+    ),
+)
+
+OCR_ERROR_TYPES = {
+    error_type.__name__: error_type
+    for error_type in (
+        OCRValidationError,
+        OCRFileNotFoundError,
+        OCRUnsupportedImageError,
+        OCRCorruptedImageError,
+        OCREmptyPageError,
+        OCRModelUnavailableError,
+        OCRModelLoadError,
+        OCRInferenceError,
+        OCRLifecycleError,
+    )
+}
 
 
 def get_registry(request: Request) -> ServiceRegistry:
     return request.app.state.registry
 
 
-async def _save_upload(file: UploadFile) -> str:
-    """Save uploaded file to temp directory, return path."""
-    if file.content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(
-            status_code=415,
-            detail=f"Unsupported file type: {file.content_type}. Allowed: JPEG, PNG, BMP, TIFF, WebP",
-        )
-
-    content = await file.read()
-
-    if len(content) > MAX_FILE_SIZE_MB * 1024 * 1024:
-        raise HTTPException(status_code=413, detail=f"File too large (max {MAX_FILE_SIZE_MB}MB)")
-
-    ext = file.filename.rsplit(".", 1)[-1] if "." in (file.filename or "") else "jpg"
-    filename = f"{uuid.uuid4().hex}.{ext}"
-    file_path = os.path.join(settings.UPLOAD_DIR, filename)
-
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    return file_path
+def _raise_for_ocr_failure(result: dict) -> None:
+    if not result.get("error") or result.get("text"):
+        return
+    error_type = OCR_ERROR_TYPES.get(result.get("error_type"), OCRError)
+    raise error_type(result["error"])
 
 
 @router.post(
@@ -80,25 +105,20 @@ async def ocr_extract(
     """
     **OCR only — no translation.**
 
-    Extracts text from an uploaded image using:
-    - Layer 1: PaddleOCR (primary, confidence-aware)
-    - Layer 2: Tesseract (fallback if confidence < threshold)
-    - Layer 3: Qwen2.5 LLM correction (fixes garbled characters)
+    Extracts text from an uploaded image using local PaddleOCR detection,
+    classification, and language-specific recognition models.
 
     Returns extracted text + detected language in IndicTrans2 format.
     """
     t0 = time.monotonic()
 
-    file_path = await _save_upload(file)
-
-    try:
+    async with managed_upload(file, OCR_UPLOAD_POLICY) as file_path:
         # Load OCR service (lazy)
         ocr_svc = await registry.get_ocr_service()
 
         ocr_result = await ocr_svc.extract(file_path, language_hint=source_lang_hint)
 
-        if ocr_result.get("error") and not ocr_result.get("text"):
-            raise HTTPException(status_code=422, detail=f"OCR failed: {ocr_result['error']}")
+        _raise_for_ocr_failure(ocr_result)
 
         lang_code = ocr_result["language"]
 
@@ -112,14 +132,6 @@ async def ocr_extract(
             llm_corrected=ocr_result["llm_corrected"],
             processing_ms=int((time.monotonic() - t0) * 1000),
         )
-
-    finally:
-        # Clean up temp file
-        try:
-            os.remove(file_path)
-        except OSError:
-            pass
-
 
 @router.post(
     "/extract-and-translate",
@@ -139,18 +151,16 @@ async def ocr_extract_and_translate(
     """
     **Full OCR → Translation → TTS pipeline.**
 
-    1. Upload image → OCR (PaddleOCR → Tesseract → LLM correction)
+    1. Upload image → PaddleOCR text extraction
     2. Auto-detect source language from extracted text
-    3. Translate to `target_lang`
-    4. Optionally synthesise translated text to speech
+    3. IndicTrans2 translation to `target_lang`
+    4. Optional Piper speech synthesis
 
     All three pipeline stages start loading their models in parallel.
     """
     t0 = time.monotonic()
 
-    file_path = await _save_upload(file)
-
-    try:
+    async with managed_upload(file, OCR_UPLOAD_POLICY) as file_path:
         # ── Start loading all needed services in parallel ──────────────────────
         ocr_task    = asyncio.create_task(registry.get_ocr_service())
         trans_task  = asyncio.create_task(registry.get_translation_service())
@@ -160,8 +170,7 @@ async def ocr_extract_and_translate(
         # ── Step 1: OCR ───────────────────────────────────────────────────────
         ocr_result = await ocr_svc.extract(file_path, language_hint=source_lang_hint)
 
-        if ocr_result.get("error") and not ocr_result.get("text"):
-            raise HTTPException(status_code=422, detail=f"OCR failed: {ocr_result['error']}")
+        _raise_for_ocr_failure(ocr_result)
 
         extracted_text = ocr_result["text"]
         src_lang = ocr_result["language"]
@@ -217,9 +226,3 @@ async def ocr_extract_and_translate(
             tts=tts_result,
             processing_ms=int((time.monotonic() - t0) * 1000),
         )
-
-    finally:
-        try:
-            os.remove(file_path)
-        except OSError:
-            pass

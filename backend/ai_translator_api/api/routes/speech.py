@@ -12,57 +12,32 @@ POST /api/v1/speech/transcribe
 
 import asyncio
 import logging
-import os
 import time
-import uuid
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
-from core.config import settings
-from core.registry import ServiceRegistry
-from models.schemas import SpeechTranslateResponse, TTSResult
-from utils.language_detector import LANGUAGE_NAMES
+from ai_translator_api.core.config import settings
+from ai_translator_api.core.registry import ServiceRegistry
+from ai_translator_api.models.schemas import SpeechTranslateResponse, TTSResult
+from ai_translator_api.utils.language_detector import LANGUAGE_NAMES
+from ai_translator_api.utils.uploads import UploadPolicy, managed_upload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-ALLOWED_AUDIO_TYPES = {
-    "audio/wav", "audio/wave", "audio/x-wav",
-    "audio/mpeg", "audio/mp3",
-    "audio/ogg", "audio/webm",
-    "audio/flac",
-}
-MAX_AUDIO_SIZE_MB = 25
+SPEECH_UPLOAD_POLICY = UploadPolicy(
+    name="audio",
+    upload_dir=Path(settings.UPLOAD_DIR),
+    max_size_bytes=settings.SPEECH_MAX_UPLOAD_SIZE_BYTES,
+    chunk_size_bytes=settings.UPLOAD_CHUNK_SIZE_BYTES,
+    allowed_extensions=frozenset(settings.STT_SUPPORTED_EXTENSIONS),
+)
 
 
 def get_registry(request: Request) -> ServiceRegistry:
     return request.app.state.registry
-
-
-async def _save_audio(file: UploadFile) -> str:
-    """Save uploaded audio file, return temp path."""
-    content = await file.read()
-
-    if len(content) > MAX_AUDIO_SIZE_MB * 1024 * 1024:
-        raise HTTPException(
-            status_code=413, detail=f"Audio file too large (max {MAX_AUDIO_SIZE_MB}MB)"
-        )
-
-    # Accept by extension if content-type is generic
-    ext = "wav"
-    if file.filename:
-        parts = file.filename.rsplit(".", 1)
-        if len(parts) == 2:
-            ext = parts[1].lower()
-
-    filename = f"{uuid.uuid4().hex}.{ext}"
-    file_path = os.path.join(settings.UPLOAD_DIR, filename)
-
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    return file_path
 
 
 @router.post(
@@ -78,9 +53,7 @@ async def transcribe_only(
     Uses faster-whisper with language auto-detection.
     """
     t0 = time.monotonic()
-    file_path = await _save_audio(file)
-
-    try:
+    async with managed_upload(file, SPEECH_UPLOAD_POLICY) as file_path:
         stt_svc = await registry.get_stt_service()
         stt_result = await stt_svc.transcribe(file_path)
 
@@ -94,13 +67,6 @@ async def transcribe_only(
             "confidence": stt_result["confidence"],
             "processing_ms": int((time.monotonic() - t0) * 1000),
         }
-    finally:
-        try:
-            os.remove(file_path)
-        except OSError:
-            pass
-
-
 @router.post(
     "/transcribe-and-translate",
     response_model=SpeechTranslateResponse,
@@ -118,21 +84,17 @@ async def transcribe_and_translate(
     """
     **Full Speech-to-Speech Translation pipeline.**
 
-    1. Whisper STT — transcribes audio, auto-detects language
+    1. Faster Whisper — transcribes audio and detects its language
     2. IndicTrans2 — translates to `target_lang`
-    3. Indic Parler TTS (→ eSpeak-NG fallback) — synthesises translated text
+    3. Piper — optionally synthesises the translated text
 
-    Confidence-aware routing:
-    - If Whisper confidence < 0.5 → translation still proceeds but is flagged
-    - If Indic Parler fails → eSpeak-NG fallback is used automatically
-
-    All services are loaded lazily in parallel on first call.
+    Faster Whisper confidence is returned with the result. Services load local
+    artifacts lazily; speech recognition and translation service acquisition
+    run in parallel, and Piper loads only when speech synthesis is enabled.
     """
     t0 = time.monotonic()
 
-    file_path = await _save_audio(file)
-
-    try:
+    async with managed_upload(file, SPEECH_UPLOAD_POLICY) as file_path:
         # ── Load STT + Translation services in parallel ────────────────────────
         stt_task   = asyncio.create_task(registry.get_stt_service())
         trans_task = asyncio.create_task(registry.get_translation_service())
@@ -207,9 +169,3 @@ async def transcribe_and_translate(
             tts=tts_result,
             processing_ms=int((time.monotonic() - t0) * 1000),
         )
-
-    finally:
-        try:
-            os.remove(file_path)
-        except OSError:
-            pass

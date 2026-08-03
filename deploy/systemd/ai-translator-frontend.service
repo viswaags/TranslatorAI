@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Translator frontend
+After=ai-translator-backend.service
+Requires=ai-translator-backend.service
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@PROJECT_DIR@
+ExecStart=@PROJECT_DIR@/deploy/start-frontend.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

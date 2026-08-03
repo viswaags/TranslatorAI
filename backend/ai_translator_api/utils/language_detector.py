@@ -11,53 +11,31 @@ import logging
 import re
 from typing import Optional
 
+from ai_translator_api.utils.languages import (
+    ENGLISH_CODE,
+    HINDI_CODE,
+    ISO_TO_INDICTRANS,
+    LANGUAGE_NAMES,
+    MARATHI_CODE,
+)
+
 logger = logging.getLogger(__name__)
 
 
-LANG_CODE_MAP = {
-    "en": "eng_Latn",
-    "ta": "tam_Taml",
-    "hi": "hin_Deva",
-    "te": "tel_Telu",
-    "kn": "kan_Knda",
-    "ml": "mal_Mlym",
-    "bn": "ben_Beng",
-    "gu": "guj_Gujr",
-    "mr": "mar_Deva",
-    "pa": "pan_Guru",
-    "ur": "urd_Arab",
-    "or": "ory_Orya",
-    "as": "asm_Beng",
-}
-
-LANGUAGE_NAMES = {
-    "eng_Latn": "English",
-    "tam_Taml": "Tamil",
-    "hin_Deva": "Hindi",
-    "tel_Telu": "Telugu",
-    "kan_Knda": "Kannada",
-    "mal_Mlym": "Malayalam",
-    "ben_Beng": "Bengali",
-    "guj_Gujr": "Gujarati",
-    "mar_Deva": "Marathi",
-    "pan_Guru": "Punjabi",
-    "ury_Orya": "Odia",
-    "urd_Arab": "Urdu",
-    "asm_Beng": "Assamese",
-}
+LANG_CODE_MAP = ISO_TO_INDICTRANS
 
 # Unicode block → IndicTrans2 code
 UNICODE_RANGES = [
-    (r"[\u0B80-\u0BFF]", "tam_Taml"),   # Tamil
-    (r"[\u0C00-\u0C7F]", "tel_Telu"),   # Telugu
-    (r"[\u0C80-\u0CFF]", "kan_Knda"),   # Kannada
-    (r"[\u0D00-\u0D7F]", "mal_Mlym"),   # Malayalam
-    (r"[\u0980-\u09FF]", "ben_Beng"),   # Bengali (also Assamese)
-    (r"[\u0A80-\u0AFF]", "guj_Gujr"),   # Gujarati
-    (r"[\u0A00-\u0A7F]", "pan_Guru"),   # Gurmukhi (Punjabi)
-    (r"[\u0B00-\u0B7F]", "ory_Orya"),   # Odia
-    (r"[\u0600-\u06FF]", "urd_Arab"),   # Arabic/Urdu
-    (r"[\u0900-\u097F]", "hin_Deva"),   # Devanagari → Hindi (or Marathi)
+    (r"[\u0B80-\u0BFF]", ISO_TO_INDICTRANS["ta"]),  # Tamil
+    (r"[\u0C00-\u0C7F]", ISO_TO_INDICTRANS["te"]),  # Telugu
+    (r"[\u0C80-\u0CFF]", ISO_TO_INDICTRANS["kn"]),  # Kannada
+    (r"[\u0D00-\u0D7F]", ISO_TO_INDICTRANS["ml"]),  # Malayalam
+    (r"[\u0980-\u09FF]", ISO_TO_INDICTRANS["bn"]),  # Bengali/Assamese
+    (r"[\u0A80-\u0AFF]", ISO_TO_INDICTRANS["gu"]),  # Gujarati
+    (r"[\u0A00-\u0A7F]", ISO_TO_INDICTRANS["pa"]),  # Punjabi
+    (r"[\u0B00-\u0B7F]", ISO_TO_INDICTRANS["or"]),  # Odia
+    (r"[\u0600-\u06FF]", ISO_TO_INDICTRANS["ur"]),  # Urdu
+    (r"[\u0900-\u097F]", HINDI_CODE),  # Hindi or Marathi
 ]
 
 
@@ -76,11 +54,11 @@ class LanguageDetector:
             Falls back to "eng_Latn" if detection fails.
         """
         if not text or not text.strip():
-            return "eng_Latn"
+            return ENGLISH_CODE
 
         # Step 1: Unicode range analysis (fast, no library)
         unicode_result = self._detect_by_unicode(text)
-        if unicode_result and unicode_result != "eng_Latn":
+        if unicode_result and unicode_result != ENGLISH_CODE:
             logger.debug("Language detected via unicode: %s", unicode_result)
             return unicode_result
 
@@ -92,7 +70,7 @@ class LanguageDetector:
 
         # Step 3: Default
         logger.debug("Language detection defaulted to eng_Latn")
-        return "eng_Latn"
+        return ENGLISH_CODE
 
     def detect_with_confidence(self, text: str) -> tuple[str, float]:
         """
@@ -100,10 +78,10 @@ class LanguageDetector:
         Confidence is estimated — unicode detection is 0.95, langdetect varies.
         """
         if not text or not text.strip():
-            return "eng_Latn", 0.5
+            return ENGLISH_CODE, 0.5
 
         unicode_result = self._detect_by_unicode(text)
-        if unicode_result and unicode_result != "eng_Latn":
+        if unicode_result and unicode_result != ENGLISH_CODE:
             return unicode_result, 0.95
 
         try:
@@ -111,12 +89,12 @@ class LanguageDetector:
             results = detect_langs(text)
             if results:
                 top = results[0]
-                code = LANG_CODE_MAP.get(top.lang, "eng_Latn")
+                code = LANG_CODE_MAP.get(top.lang, ENGLISH_CODE)
                 return code, round(top.prob, 3)
         except Exception:
             pass
 
-        return "eng_Latn", 0.5
+        return ENGLISH_CODE, 0.5
 
     def language_name(self, code: str) -> str:
         """Return human-readable name for a language code."""
@@ -136,17 +114,17 @@ class LanguageDetector:
         if not scores:
             latin = len(re.findall(r"[A-Za-z]", text))
             if latin / total > 0.4:
-                return "eng_Latn"
+                return ENGLISH_CODE
             return None
 
         best_lang = max(scores, key=scores.get)
         best_count = scores[best_lang]
 
         # Devanagari: Hindi vs Marathi disambiguation
-        if best_lang == "hin_Deva":
+        if best_lang == HINDI_CODE:
             mr_check = self._detect_by_langdetect(text)
-            if mr_check == "mar_Deva":
-                return "mar_Deva"
+            if mr_check == MARATHI_CODE:
+                return MARATHI_CODE
 
         if best_count / total >= 0.25:
             return best_lang
@@ -158,7 +136,7 @@ class LanguageDetector:
             from langdetect import detect, DetectorFactory
             DetectorFactory.seed = 0
             code = detect(text)
-            return LANG_CODE_MAP.get(code, "eng_Latn")
+            return LANG_CODE_MAP.get(code, ENGLISH_CODE)
         except Exception as e:
             logger.debug("langdetect failed: %s", e)
             return None

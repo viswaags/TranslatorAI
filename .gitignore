@@ -1,17 +1,62 @@
-venv/
+# Local environment configuration. Keep the distributable template tracked.
 .env
+.env.*
+!.env.example
 
+# Local model artifacts and checkpoints.
+/models/
+/checkpoints/
+
+# Python virtual environments.
+.venv/
+venv/
+env/
+ENV/
+
+# Python caches, test caches, and local coverage output.
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 
-download_voice.py
+# Python build and packaging output.
+build/
+dist/
+.eggs/
+*.egg-info/
 
-tests
-tests/audio/
-tests/image/
+# JavaScript dependencies.
+node_modules/
 
+# Generated runtime output and uploaded files.
+output/
+outputs/
+generated/
+uploads/
+
+# Temporary files and logs.
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.orig
+
+# Editor and operating-system metadata.
+.vscode/
+.idea/
+*.code-workspace
 .DS_Store
 Thumbs.db

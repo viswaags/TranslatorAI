@@ -1,36 +1,80 @@
-"""
-TranslationService
-==================
-Primary  : IndicTrans2 distilled 200M models (ai4bharat)
-Fallback : M2M-100 418M (facebook) — COMMENTED OUT, ready to enable
+"""Canonical translation service using the CTranslate2 IndicTrans2 backend."""
 
-Routing:
-  English  → Indic  : en-indic model (direct)
-  Indic    → English : indic-en model (direct)
-  Indic    → Indic   : pivot via English (both models)
-
-All models are lazy-loaded on first use.
-"""
+from __future__ import annotations
 
 import logging
+import threading
 import time
-from typing import Optional
+from abc import ABC, abstractmethod
+from typing import Optional, Sequence
 
-import torch
-
-from core.config import settings
+from ai_translator_api.core.config import settings
+from ai_translator_api.core.errors import (
+    InferenceError,
+    LifecycleError,
+    ModelLoadError,
+    ModelUnavailableError,
+    ServiceError,
+    UnsupportedInputError,
+    ValidationError,
+)
+from ai_translator_api.core.lifecycle import LazyBackendSlot, LifecycleCoordinator
+from ai_translator_api.utils.languages import ENGLISH_CODE, TRANSLATION_LANGUAGE_CODES
 
 logger = logging.getLogger(__name__)
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-EN = "eng_Latn"
+EN = ENGLISH_CODE
+SUPPORTED_LANGUAGES = TRANSLATION_LANGUAGE_CODES
 
 
-class IndicTranslator:
-    """
-    Wraps one IndicTrans2 model for a given direction.
-    direction: "en-indic" | "indic-en"
-    """
+class TranslationError(ServiceError):
+    """Base translation subsystem error."""
+
+
+class TranslationValidationError(ValidationError, TranslationError):
+    """Translation request or configuration is invalid."""
+
+
+class UnsupportedLanguageError(
+    UnsupportedInputError, TranslationValidationError
+):
+    """A language code or pair is unsupported."""
+
+
+class TranslationModelUnavailableError(
+    ModelUnavailableError, TranslationError
+):
+    """Required model artifacts are unavailable locally."""
+
+
+class TranslationModelLoadError(ModelLoadError, TranslationError):
+    """Locally available model artifacts could not be loaded."""
+
+
+class TranslationInferenceError(InferenceError, TranslationError):
+    """The backend failed during translation."""
+
+
+class TranslationLifecycleError(LifecycleError, TranslationError):
+    """The service cannot accept work during a lifecycle transition."""
+
+
+class TranslationBackend(ABC):
+    """Inference backend boundary used by TranslationService."""
+
+    @abstractmethod
+    def translate(
+        self, sentences: Sequence[str], src_lang: str, tgt_lang: str
+    ) -> list[str]:
+        """Translate a homogeneous batch while preserving input order."""
+
+    @abstractmethod
+    def unload(self) -> None:
+        """Release backend resources."""
+
+
+class CTranslate2IndicTransBackend(TranslationBackend):
+    """CTranslate2/SentencePiece implementation for one IndicTrans2 direction."""
 
     MODEL_MAP = {
         "en-indic": settings.INDICTRANS2_EN_INDIC,
@@ -39,151 +83,240 @@ class IndicTranslator:
 
     def __init__(self, direction: str):
         if direction not in self.MODEL_MAP:
-            raise ValueError(f"direction must be 'en-indic' or 'indic-en', got: {direction!r}")
-
+            raise TranslationValidationError(
+                f"Unknown translation direction: {direction!r}"
+            )
         self.direction = direction
-        self.model_name = self.MODEL_MAP[direction]
+        self.model_path = self.MODEL_MAP[direction]
+        self._lock = threading.RLock()
+        self._translator = None
+        self._source_sp = None
+        self._target_sp = None
+        self._processor = None
 
-        logger.info("Loading IndicTrans2 model: %s", self.model_name)
+    @staticmethod
+    def _sentencepiece_path(model_dir, suffix: str):
+        from pathlib import Path
 
-        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-        from IndicTransToolkit import IndicProcessor
+        nested = Path(model_dir) / "vocab" / f"model.{suffix}"
+        return nested if nested.is_file() else Path(model_dir) / f"model.{suffix}"
 
-        self.processor = IndicProcessor(inference=True)
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name, trust_remote_code=True
-        )
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(
-            self.model_name, trust_remote_code=True
-        )
-        self.model.to(DEVICE)
-        self.model.eval()
+    @classmethod
+    def _validate_model_directory(cls, model_reference: str):
+        from pathlib import Path
 
-        logger.info("✅ IndicTrans2 [%s] ready on %s", direction, DEVICE)
+        model_dir = Path(model_reference).expanduser()
+        required = {
+            "CTranslate2 model": model_dir / "model.bin",
+            "source SentencePiece model": cls._sentencepiece_path(model_dir, "SRC"),
+            "target SentencePiece model": cls._sentencepiece_path(model_dir, "TGT"),
+        }
+        missing = [label for label, path in required.items() if not path.is_file()]
+        if not model_dir.is_dir() or missing:
+            detail = ", ".join(missing) if missing else "model directory"
+            raise TranslationModelUnavailableError(
+                f"Local IndicTrans2 [{model_reference}] is missing: {detail}"
+            )
+        return model_dir.resolve(), required
 
-    def translate(self, sentences: list, src_lang: str, tgt_lang: str) -> list:
+    def _ensure_loaded(self) -> None:
+        if self._translator is not None:
+            return
+        with self._lock:
+            if self._translator is not None:
+                return
+
+            model_dir, required = self._validate_model_directory(self.model_path)
+            logger.info(
+                "Loading local CTranslate2 IndicTrans2 [%s]: %s",
+                self.direction,
+                model_dir,
+            )
+            try:
+                import ctranslate2
+                import sentencepiece as spm
+                from IndicTransToolkit import IndicProcessor
+
+                processor = IndicProcessor(inference=True)
+                translator = ctranslate2.Translator(
+                    str(model_dir),
+                    device="cpu",
+                    compute_type=settings.TRANSLATION_COMPUTE_TYPE,
+                    inter_threads=settings.TRANSLATION_INTER_THREADS,
+                    intra_threads=settings.TRANSLATION_INTRA_THREADS,
+                )
+                source_sp = spm.SentencePieceProcessor(
+                    model_file=str(required["source SentencePiece model"])
+                )
+                target_sp = spm.SentencePieceProcessor(
+                    model_file=str(required["target SentencePiece model"])
+                )
+            except Exception as exc:
+                raise TranslationModelLoadError(
+                    f"Failed to load local CTranslate2 IndicTrans2 "
+                    f"[{self.direction}] model"
+                ) from exc
+
+            self._processor = processor
+            self._source_sp = source_sp
+            self._target_sp = target_sp
+            self._translator = translator
+            logger.info("CTranslate2 IndicTrans2 [%s] ready on CPU", self.direction)
+
+    def _encode_batch(self, sentences: Sequence[str]) -> list[list[str]]:
+        encoded = []
+        for sentence in sentences:
+            parts = sentence.split(" ", 2)
+            if (
+                len(parts) == 3
+                and len(parts[0]) == 8
+                and len(parts[1]) == 8
+                and "_" in parts[0]
+                and "_" in parts[1]
+            ):
+                tokens = [
+                    parts[0],
+                    parts[1],
+                    *self._source_sp.encode(parts[2], out_type=str),
+                ]
+            else:
+                tokens = self._source_sp.encode(sentence, out_type=str)
+
+            if not tokens:
+                raise TranslationInferenceError(
+                    "SentencePiece returned an empty token sequence"
+                )
+            encoded.append(tokens[: settings.TRANSLATION_MAX_INPUT_TOKENS])
+        return encoded
+
+    def translate(
+        self, sentences: Sequence[str], src_lang: str, tgt_lang: str
+    ) -> list[str]:
         if not sentences:
             return []
 
-        batch = self.processor.preprocess_batch(
-            sentences, src_lang=src_lang, tgt_lang=tgt_lang, visualize=False
-        )
+        # The same lock serializes first-load, inference and unload for this model.
+        with self._lock:
+            self._ensure_loaded()
+            try:
+                batch = self._processor.preprocess_batch(
+                    list(sentences),
+                    src_lang=src_lang,
+                    tgt_lang=tgt_lang,
+                    visualize=False,
+                )
+                token_batches = self._encode_batch(batch)
+                translations = self._translator.translate_batch(
+                    token_batches,
+                    beam_size=settings.TRANSLATION_NUM_BEAMS,
+                    max_decoding_length=settings.TRANSLATION_MAX_OUTPUT_TOKENS,
+                    no_repeat_ngram_size=settings.TRANSLATION_NO_REPEAT_NGRAM_SIZE,
+                )
+                decoded = [
+                    self._target_sp.decode(result.hypotheses[0])
+                    for result in translations
+                ]
+                results = self._processor.postprocess_batch(decoded, lang=tgt_lang)
+            except Exception as exc:
+                if isinstance(exc, TranslationError):
+                    raise
+                raise TranslationInferenceError(
+                    f"CTranslate2 IndicTrans2 [{self.direction}] inference failed"
+                ) from exc
 
-        inputs = self.tokenizer(
-            batch,
-            padding="longest",
-            truncation=True,
-            max_length=256,
-            return_tensors="pt",
-        ).to(DEVICE)
-
-        with torch.inference_mode():
-            output_tokens = self.model.generate(
-                **inputs,
-                use_cache=True,
-                num_beams=5,
-                num_return_sequences=1,
-                max_length=256,
-            )
-
-        raw_output = self.tokenizer.batch_decode(
-            output_tokens,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=True,
-        )
-
-        return self.processor.postprocess_batch(raw_output, lang=tgt_lang)
+            if len(results) != len(sentences):
+                raise TranslationInferenceError(
+                    "Translation backend output count does not match input count"
+                )
+            if any(not isinstance(item, str) or not item.strip() for item in results):
+                raise TranslationInferenceError(
+                    "Translation backend returned an empty or invalid output"
+                )
+            return list(results)
 
     def translate_one(self, text: str, src_lang: str, tgt_lang: str) -> str:
+        """Backward-compatible single-string wrapper."""
         return self.translate([text], src_lang, tgt_lang)[0]
 
-    def unload(self):
-        del self.model
-        del self.tokenizer
-        if DEVICE == "cuda":
-            torch.cuda.empty_cache()
-        logger.info("Unloaded IndicTrans2 [%s]", self.direction)
+    def unload(self) -> None:
+        with self._lock:
+            translator = self._translator
+            self._translator = None
+            self._source_sp = None
+            self._target_sp = None
+            self._processor = None
+            if translator is not None:
+                del translator
+                logger.info("Unloaded CTranslate2 IndicTrans2 [%s]", self.direction)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# M2M-100 FALLBACK — uncomment to enable
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# ISO-639-1 codes used by M2M-100:
-# M2M100_LANG_MAP = {
-#     "eng_Latn": "en", "tam_Taml": "ta", "hin_Deva": "hi",
-#     "tel_Telu": "te", "kan_Knda": "kn", "mal_Mlym": "ml",
-#     "ben_Beng": "bn", "guj_Gujr": "gu", "mar_Deva": "mr",
-#     "pan_Guru": "pa", "urd_Arab": "ur",
-# }
-#
-# class M2M100Translator:
-#     """
-#     Fallback translator using facebook/m2m100_418M.
-#     Supports direct Indic↔Indic without pivot.
-#     Activate by setting TRANSLATION_PRIMARY=m2m100 in env.
-#     """
-#
-#     def __init__(self):
-#         from transformers import M2M100ForConditionalGeneration, M2M100Tokenizer
-#         logger.info("Loading M2M-100: %s", settings.M2M100_MODEL)
-#         self.tokenizer = M2M100Tokenizer.from_pretrained(settings.M2M100_MODEL)
-#         self.model = M2M100ForConditionalGeneration.from_pretrained(settings.M2M100_MODEL)
-#         self.model.to(DEVICE)
-#         self.model.eval()
-#         logger.info("✅ M2M-100 ready")
-#
-#     def translate_one(self, text: str, src_lang: str, tgt_lang: str) -> str:
-#         src_iso = M2M100_LANG_MAP.get(src_lang, "en")
-#         tgt_iso = M2M100_LANG_MAP.get(tgt_lang, "en")
-#         self.tokenizer.src_lang = src_iso
-#         inputs = self.tokenizer(text, return_tensors="pt").to(DEVICE)
-#         with torch.inference_mode():
-#             generated = self.model.generate(
-#                 **inputs,
-#                 forced_bos_token_id=self.tokenizer.get_lang_id(tgt_iso),
-#                 max_length=256,
-#             )
-#         return self.tokenizer.decode(generated[0], skip_special_tokens=True)
-#
-#     def unload(self):
-#         del self.model, self.tokenizer
-#         if DEVICE == "cuda":
-#             torch.cuda.empty_cache()
-# ─────────────────────────────────────────────────────────────────────────────
+# Preserve the previously public wrapper name.
+IndicTranslator = CTranslate2IndicTransBackend
 
 
 class TranslationService:
-    """
-    Smart routing translation service.
-    Exposes the same interface regardless of backend model.
-    """
+    """Validate requests and route them through interchangeable backends."""
 
     def __init__(self):
-        self._en_indic: Optional[IndicTranslator] = None
-        self._indic_en: Optional[IndicTranslator] = None
-        # self._m2m100: Optional[M2M100Translator] = None  # fallback (uncomment to enable)
-        logger.info("TranslationService ready (models load on first use)")
+        self._en_indic_slot = LazyBackendSlot(
+            lambda: CTranslate2IndicTransBackend("en-indic"),
+            lambda resource: resource.unload(),
+        )
+        self._indic_en_slot = LazyBackendSlot(
+            lambda: CTranslate2IndicTransBackend("indic-en"),
+            lambda resource: resource.unload(),
+        )
+        self._lifecycle = LifecycleCoordinator(
+            lambda: TranslationLifecycleError(
+                "Translation service is currently unloading"
+            )
+        )
+        self._validate_configuration()
+        logger.info("TranslationService ready (CTranslate2, offline, lazy loading)")
 
-    # ── Lazy loaders ───────────────────────────────────────────────────────────
+    @staticmethod
+    def _validate_configuration() -> None:
+        values = {
+            "TRANSLATION_MAX_INPUT_TOKENS": settings.TRANSLATION_MAX_INPUT_TOKENS,
+            "TRANSLATION_MAX_OUTPUT_TOKENS": settings.TRANSLATION_MAX_OUTPUT_TOKENS,
+            "TRANSLATION_NUM_BEAMS": settings.TRANSLATION_NUM_BEAMS,
+            "TRANSLATION_BATCH_SIZE": settings.TRANSLATION_BATCH_SIZE,
+            "TRANSLATION_INTER_THREADS": settings.TRANSLATION_INTER_THREADS,
+            "TRANSLATION_INTRA_THREADS": settings.TRANSLATION_INTRA_THREADS,
+        }
+        invalid = [name for name, value in values.items() if value < 1]
+        if invalid:
+            raise TranslationValidationError(
+                f"Translation settings must be positive: {', '.join(invalid)}"
+            )
 
-    def _get_en_indic(self) -> IndicTranslator:
-        if self._en_indic is None:
-            self._en_indic = IndicTranslator("en-indic")
-        return self._en_indic
+    def _get_en_indic(self) -> TranslationBackend:
+        return self._en_indic_slot.get()
 
-    def _get_indic_en(self) -> IndicTranslator:
-        if self._indic_en is None:
-            self._indic_en = IndicTranslator("indic-en")
-        return self._indic_en
+    def _get_indic_en(self) -> TranslationBackend:
+        return self._indic_en_slot.get()
 
-    # Uncomment to activate M2M-100 fallback:
-    # def _get_m2m100(self) -> M2M100Translator:
-    #     if self._m2m100 is None:
-    #         self._m2m100 = M2M100Translator()
-    #     return self._m2m100
+    @staticmethod
+    def _validate_language(code: str, role: str) -> None:
+        if not isinstance(code, str) or code not in SUPPORTED_LANGUAGES:
+            raise UnsupportedLanguageError(
+                f"Unsupported {role} language code: {code!r}"
+            )
 
-    # ── Public API ─────────────────────────────────────────────────────────────
+    @classmethod
+    def _validate_request(cls, text: str, src_lang: str, tgt_lang: str) -> None:
+        if not isinstance(text, str) or not text.strip():
+            raise TranslationValidationError(
+                "Translation text must be a non-empty string"
+            )
+        cls._validate_language(src_lang, "source")
+        cls._validate_language(tgt_lang, "target")
+
+    @staticmethod
+    def _detect_language(text: str) -> str:
+        from ai_translator_api.utils.language_detector import LanguageDetector
+
+        return LanguageDetector().detect(text)
 
     def translate(
         self,
@@ -191,113 +324,110 @@ class TranslationService:
         tgt_lang: str,
         src_lang: Optional[str] = None,
     ) -> dict:
-        """
-        Translate a single string.
+        """Translate one string and return the canonical result structure."""
+        started = time.monotonic()
+        resolved_src = src_lang or self._detect_language(text)
+        self._validate_request(text, resolved_src, tgt_lang)
 
-        Returns:
-            {
-                "translated_text": str,
-                "src_lang": str,       # resolved source language
-                "tgt_lang": str,
-                "engine": str,         # "indictrans2" | "m2m100"
-                "processing_ms": int,
-            }
-        """
-        t0 = time.monotonic()
+        if resolved_src == tgt_lang:
+            return self._result(
+                text, resolved_src, tgt_lang, "passthrough", "passthrough", started
+            )
 
-        if not src_lang:
-            from utils.language_detector import LanguageDetector
-            src_lang = LanguageDetector().detect(text)
-
-        logger.info("Translate [%s → %s] | text_len=%d", src_lang, tgt_lang, len(text))
-
-        # Same language — passthrough
-        if src_lang == tgt_lang:
-            return self._result(text, src_lang, tgt_lang, "passthrough", t0)
-
-        try:
-            # ── Primary: IndicTrans2 ──────────────────────────────────────────
-            translated = self._indictrans2_route(text, src_lang, tgt_lang)
-            return self._result(translated, src_lang, tgt_lang, "indictrans2", t0)
-
-        except Exception as e:
-            logger.warning("IndicTrans2 failed: %s — trying fallback", e)
-
-            # ── Fallback: M2M-100 (uncomment block below to enable) ───────────
-            # try:
-            #     translated = self._get_m2m100().translate_one(text, src_lang, tgt_lang)
-            #     logger.info("Fallback M2M-100 succeeded")
-            #     return self._result(translated, src_lang, tgt_lang, "m2m100", t0)
-            # except Exception as e2:
-            #     logger.error("M2M-100 fallback also failed: %s", e2)
-            #     raise RuntimeError(f"All translation engines failed: {e2}") from e2
-
-            raise RuntimeError(f"Translation failed: {e}") from e
+        with self._lifecycle.operation():
+            output, route = self._translate_routed([text], resolved_src, tgt_lang)
+        return self._result(
+            output[0], resolved_src, tgt_lang, "indictrans2", route, started
+        )
 
     def translate_batch(
         self,
         texts: list,
         tgt_lang: str,
         src_lang: Optional[str] = None,
-    ) -> list:
-        """Batch translate — all texts assumed same source language."""
+    ) -> list[dict]:
+        """Translate a homogeneous batch and return one result dict per item."""
+        if not isinstance(texts, list):
+            raise TranslationValidationError("texts must be a list")
         if not texts:
             return []
 
-        if not src_lang:
-            from utils.language_detector import LanguageDetector
-            src_lang = LanguageDetector().detect(texts[0])
+        resolved_src = src_lang or self._detect_language(texts[0])
+        for text in texts:
+            self._validate_request(text, resolved_src, tgt_lang)
 
-        if src_lang == tgt_lang:
-            return texts
+        started = time.monotonic()
+        if resolved_src == tgt_lang:
+            return [
+                self._result(
+                    text,
+                    resolved_src,
+                    tgt_lang,
+                    "passthrough",
+                    "passthrough",
+                    started,
+                )
+                for text in texts
+            ]
 
-        return self._indictrans2_batch(texts, src_lang, tgt_lang)
+        translated: list[str] = []
+        route = ""
+        with self._lifecycle.operation():
+            for offset in range(0, len(texts), settings.TRANSLATION_BATCH_SIZE):
+                chunk = texts[offset : offset + settings.TRANSLATION_BATCH_SIZE]
+                chunk_output, route = self._translate_routed(
+                    chunk, resolved_src, tgt_lang
+                )
+                translated.extend(chunk_output)
 
-    # ── Routing logic ──────────────────────────────────────────────────────────
+        return [
+            self._result(
+                output, resolved_src, tgt_lang, "indictrans2", route, started
+            )
+            for output in translated
+        ]
 
-    def _indictrans2_route(self, text: str, src_lang: str, tgt_lang: str) -> str:
+    def _translate_routed(
+        self, texts: Sequence[str], src_lang: str, tgt_lang: str
+    ) -> tuple[list[str], str]:
         if src_lang == EN:
-            logger.debug("Route: EN → Indic (direct)")
-            return self._get_en_indic().translate_one(text, src_lang, tgt_lang)
-
+            return self._get_en_indic().translate(texts, src_lang, tgt_lang), "direct"
         if tgt_lang == EN:
-            logger.debug("Route: Indic → EN (direct)")
-            return self._get_indic_en().translate_one(text, src_lang, tgt_lang)
+            return self._get_indic_en().translate(texts, src_lang, tgt_lang), "direct"
 
-        # Indic → Indic: pivot via English
-        logger.debug("Route: Indic → EN → Indic (pivot)")
-        pivot = self._get_indic_en().translate_one(text, src_lang, EN)
-        logger.debug("Pivot (EN): %s", pivot[:80])
-        return self._get_en_indic().translate_one(pivot, EN, tgt_lang)
-
-    def _indictrans2_batch(self, texts: list, src_lang: str, tgt_lang: str) -> list:
-        if src_lang == EN:
-            return self._get_en_indic().translate(texts, src_lang, tgt_lang)
-        if tgt_lang == EN:
-            return self._get_indic_en().translate(texts, src_lang, tgt_lang)
-        # Pivot
         pivoted = self._get_indic_en().translate(texts, src_lang, EN)
-        return self._get_en_indic().translate(pivoted, EN, tgt_lang)
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
+        return self._get_en_indic().translate(pivoted, EN, tgt_lang), "pivot"
 
     @staticmethod
-    def _result(text: str, src: str, tgt: str, engine: str, t0: float) -> dict:
+    def _result(
+        text: str,
+        src: str,
+        tgt: str,
+        engine: str,
+        route: str,
+        started: float,
+    ) -> dict:
         return {
             "translated_text": text,
             "src_lang": src,
             "tgt_lang": tgt,
             "engine": engine,
-            "processing_ms": int((time.monotonic() - t0) * 1000),
+            "route": route,
+            "processing_ms": int((time.monotonic() - started) * 1000),
         }
 
-    def unload(self):
-        if self._en_indic:
-            self._en_indic.unload()
-        if self._indic_en:
-            self._indic_en.unload()
-        # if self._m2m100:
-        #     self._m2m100.unload()
-        self._en_indic = None
-        self._indic_en = None
+    def unload(self) -> None:
+        """Wait for active calls before releasing backend resources."""
+        self._lifecycle.unload(self._unload_backends)
         logger.info("TranslationService unloaded")
+
+    def _unload_backends(self) -> None:
+        first_error: Optional[Exception] = None
+        for slot in (self._en_indic_slot, self._indic_en_slot):
+            try:
+                slot.unload()
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error

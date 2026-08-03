@@ -44,6 +44,9 @@ function handleVideoTap(e) {
 }
 
 function switchTab(tab, btn) {
+  if (tab !== state.activeTab) {
+    cancelWorkflowRequest(state.activeTab);
+  }
   state.activeTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
@@ -51,8 +54,8 @@ function switchTab(tab, btn) {
   document.getElementById('panel-' + tab).classList.add('active');
 
   const titles = {
-    image: ['Document OCR & Translation', 'Tesseract + IndicTrans2', 'badge-blue'],
-    speech: ['Speech Transcription & Translation', 'Whisper + IndicTrans2', 'badge-purple'],
+    image: ['Document OCR & Translation', 'PaddleOCR + IndicTrans2', 'badge-blue'],
+    speech: ['Speech Transcription & Translation', 'Faster Whisper + IndicTrans2', 'badge-purple'],
     text: ['Text Translation', 'IndicTrans2 INT8', 'badge-green'],
   };
   const [title, badge, cls] = titles[tab];
@@ -89,35 +92,30 @@ function showStatus(type, msg) {
   spinner.style.display = type === 'processing' ? 'block' : 'none';
 }
 
-function showResults(result, elapsed, isImage) {
-  document.getElementById('extractedText').textContent = result.original_text || '-';
-  document.getElementById('translatedText').textContent = result.translated_text || '-';
+function showResults(result, elapsed) {
+  document.getElementById('extractedText').textContent = result.inputText || '-';
+  document.getElementById('translatedText').textContent = result.translatedText || '-';
 
   const audioSection = document.getElementById('audioOutput');
-  if (result.audio_url) {
+  const tts = result.tts;
+  if (tts?.success && tts.audio_base64) {
     audioSection.classList.add('show');
-    document.getElementById('audioPlayer').src = result.audio_url + '?t=' + Date.now();
+    const format = tts.audio_format || 'wav';
+    document.getElementById('audioPlayer').src =
+      `data:audio/${format};base64,${tts.audio_base64}`;
   } else {
     audioSection.classList.remove('show');
+    document.getElementById('audioPlayer').removeAttribute('src');
   }
 
   const imgContainer = document.getElementById('translated-image-container');
-  const imgEl = document.getElementById('backend-image-result');
-  if (isImage && result.translated_image_url) {
-    imgEl.src = result.translated_image_url + '?t=' + Date.now();
-    imgContainer.style.display = 'block';
-    const dlBtn = document.getElementById('downloadImgBtn');
-    if (dlBtn) dlBtn.style.display = 'inline-block';
-    setTimeout(() => imgContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 200);
-  } else {
-    imgContainer.style.display = 'none';
-  }
+  imgContainer.style.display = 'none';
 
   document.getElementById('statsRow').innerHTML = [
     { label: 'Time', value: elapsed + 's' },
-    { label: 'Input', value: result.input_type || state.activeTab },
-    { label: 'Detected', value: result.detected_lang || 'auto' },
-    { label: 'Characters', value: (result.original_text || '').length },
+    { label: 'Input', value: result.inputType },
+    { label: 'Detected', value: result.detectedLanguageName || result.detectedLanguage || 'auto' },
+    { label: 'Characters', value: result.inputText.length },
   ].map(s => `<div class="stat-chip"><b>${s.value}</b> ${s.label}</div>`).join('');
 
   document.getElementById('resultsArea').style.display = 'block';
